@@ -6,20 +6,21 @@ import {
   Alert,
   ScrollView,
   FlatList,
+  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { ScreenOrientation } from "expo";
 
-import NumberContainer from "../components/NumberConainer";
+import NumberContainer from "../components/NumberContainer";
 import Card from "../components/Card";
-import DefaultStlyes from "../constants/default-styles";
 import MainButton from "../components/MainButton";
 import BodyText from "../components/BodyText";
+import DefaultStyles from "../constants/default-styles";
 
 const generateRandomBetween = (min, max, exclude) => {
   min = Math.ceil(min);
   max = Math.floor(max);
   const rndNum = Math.floor(Math.random() * (max - min)) + min;
-
   if (rndNum === exclude) {
     return generateRandomBetween(min, max, exclude);
   } else {
@@ -27,14 +28,7 @@ const generateRandomBetween = (min, max, exclude) => {
   }
 };
 
-// const renterListItem = (value, numOfRound) => (
-//   <View key={value} style={styles.listItem}>
-//     <BodyText>#{numOfRound}</BodyText>
-//     <BodyText>{value}</BodyText>
-//   </View>
-// );
-
-const renterListItem = (listLength, itemData) => (
+const renderListItem = (listLength, itemData) => (
   <View style={styles.listItem}>
     <BodyText>#{listLength - itemData.index}</BodyText>
     <BodyText>{itemData.item}</BodyText>
@@ -42,14 +36,34 @@ const renterListItem = (listLength, itemData) => (
 );
 
 const GameScreen = (props) => {
-  const intialGuess = generateRandomBetween(1, 100, props.userChoice);
-  const [currentGuess, setCurrentGuess] = useState(intialGuess);
-  const [pastGuesses, setPastGuesses] = useState([intialGuess.toString()]);
-
+  // ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+  
+  const initialGuess = generateRandomBetween(1, 100, props.userChoice);
+  const [currentGuess, setCurrentGuess] = useState(initialGuess);
+  const [pastGuesses, setPastGuesses] = useState([initialGuess.toString()]);
+  const [availableDeviceWidth, setAvailableDeviceWidth] = useState(
+    Dimensions.get("window").width
+  );
+  const [availableDeviceHeight, setAvailableDeviceHeight] = useState(
+    Dimensions.get("window").height
+  );
   const currentLow = useRef(1);
   const currentHigh = useRef(100);
 
   const { userChoice, onGameOver } = props;
+
+  useEffect(() => {
+    const updateLayout = () => {
+      setAvailableDeviceWidth(Dimensions.get("window").width);
+      setAvailableDeviceHeight(Dimensions.get("window").height);
+    };
+
+    Dimensions.addEventListener("change", updateLayout);
+
+    return () => {
+      Dimensions.removeEventListener("change", updateLayout);
+    };
+  });
 
   useEffect(() => {
     if (currentGuess === userChoice) {
@@ -72,26 +86,63 @@ const GameScreen = (props) => {
     } else {
       currentLow.current = currentGuess + 1;
     }
-
     const nextNumber = generateRandomBetween(
       currentLow.current,
       currentHigh.current,
       currentGuess
     );
-
     setCurrentGuess(nextNumber);
-    // setPastGuesses((currentGuesses) => [nextNumber, ...currentGuesses]);
-    setPastGuesses((currentGuesses) => [
+    // setRounds(curRounds => curRounds + 1);
+    setPastGuesses((curPastGuesses) => [
       nextNumber.toString(),
-      ...currentGuesses,
+      ...curPastGuesses,
     ]);
   };
 
+  let listContainerStyle = styles.listContainer;
+
+  if (availableDeviceWidth < 350) {
+    listContainerStyle = styles.listContainerBig;
+  }
+
+  if (availableDeviceHeight < 500) {
+    return (
+      <View style={styles.screen}>
+        <Text style={DefaultStyles.title}>Opponent's Guess</Text>
+        <View style={styles.controls}>
+          <MainButton onPress={nextGuessHandler.bind(this, "lower")}>
+            <Ionicons name="caret-down" size={24} color="white" />
+          </MainButton>
+          <NumberContainer>{currentGuess}</NumberContainer>
+          <MainButton onPress={nextGuessHandler.bind(this, "greater")}>
+            <Ionicons name="caret-up" size={24} color="white" />
+          </MainButton>
+        </View>
+        <View style={listContainerStyle}>
+          {/* <ScrollView contentContainerStyle={styles.list}>
+          {pastGuesses.map((guess, index) => renderListItem(guess, pastGuesses.length - index))}
+        </ScrollView> */}
+          <FlatList
+            keyExtractor={(item) => item}
+            data={pastGuesses}
+            renderItem={renderListItem.bind(this, pastGuesses.length)}
+            contentContainerStyle={styles.list}
+          />
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.screen}>
-      <Text style={DefaultStlyes.title}>Opponent's Gues</Text>
+      <Text style={DefaultStyles.title}>Opponent's Guess</Text>
       <NumberContainer>{currentGuess}</NumberContainer>
-      <Card style={styles.buttonContainer}>
+      <Card
+        style={{
+          ...styles.buttonContainer,
+          ...{ marginTop: availableDeviceHeight > 600 ? 20 : 5 },
+        }}
+      >
         <MainButton onPress={nextGuessHandler.bind(this, "lower")}>
           <Ionicons name="caret-down" size={24} color="white" />
         </MainButton>
@@ -99,16 +150,14 @@ const GameScreen = (props) => {
           <Ionicons name="caret-up" size={24} color="white" />
         </MainButton>
       </Card>
-      <View style={styles.listContainer}>
+      <View style={listContainerStyle}>
         {/* <ScrollView contentContainerStyle={styles.list}>
-          {pastGuesses.map((guess, index) =>
-            renterListItem(guess, pastGuesses.length - index)
-          )}
+          {pastGuesses.map((guess, index) => renderListItem(guess, pastGuesses.length - index))}
         </ScrollView> */}
         <FlatList
           keyExtractor={(item) => item}
           data={pastGuesses}
-          renderItem={renterListItem.bind(this, pastGuesses.length)}
+          renderItem={renderListItem.bind(this, pastGuesses.length)}
           contentContainerStyle={styles.list}
         />
       </View>
@@ -125,27 +174,37 @@ const styles = StyleSheet.create({
   buttonContainer: {
     flexDirection: "row",
     justifyContent: "space-around",
-    marginTop: 20,
     width: 400,
     maxWidth: "90%",
   },
+  controls: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
+    width: "80%",
+  },
+  listContainer: {
+    flex: 1,
+    width: "60%",
+  },
+  listContainerBig: {
+    flex: 1,
+    width: "80%",
+  },
+  list: {
+    flexGrow: 1,
+    // alignItems: 'center',
+    justifyContent: "flex-end",
+  },
   listItem: {
     borderColor: "#ccc",
+    borderWidth: 1,
     padding: 15,
     marginVertical: 10,
     backgroundColor: "white",
-    borderWidth: 1,
     flexDirection: "row",
     justifyContent: "space-between",
     width: "100%",
-  },
-  listContainer: {
-    width: "60%",
-    flex: 1,
-  },
-  list: {
-    justifyContent: "flex-end",
-    flexGrow: 1, // flexGrow is used instead of flex because of scrolling
   },
 });
 
